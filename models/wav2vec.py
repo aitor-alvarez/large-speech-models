@@ -8,18 +8,21 @@ from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor, Wav2Vec
     TrainingArguments, Trainer
 
 
-chars_to_remove_regex = '[\,\?\.\!\-\;\:\"\“\%\‘\”\�\']'
-
-feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0,
-                                             do_normalize=True, return_attention_mask=True)
-
-tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("./", unk_token="[UNK]", pad_token="[PAD]",
-                                                     word_delimiter_token="|")
-
-processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
 
 wer_metric = load_metric("wer")
 
+
+chars_to_remove_regex = '[\,\?\.\!\-\;\:\"\“\%\‘\”\�\']'
+
+def remove_special_characters(batch):
+    batch["sentence"] = re.sub(chars_to_remove_regex, '', batch["sentence"]).lower()
+    return batch
+
+def extract_characters(batch):
+    txt = " ".join(batch["sentence"])
+    vocab = list(set(txt))
+    dict_out = {'vocab': [vocab], 'txt': [txt]}
+    return dict_out
 
 
 def compute_metrics(pred):
@@ -36,16 +39,6 @@ def compute_metrics(pred):
 
     return {"wer": wer}
 
-def remove_special_characters(batch):
-    batch["sentence"] = re.sub(chars_to_remove_regex, '', batch["sentence"]).lower()
-    return batch
-
-def extract_characters(batch):
-    txt = " ".join(batch["sentence"])
-    vocab = list(set(txt))
-    dict_out = {'vocab': [vocab], 'txt': [txt]}
-    return dict_out
-
 
 def prepare_dataset(batch):
     audio = batch["audio"]
@@ -56,28 +49,6 @@ def prepare_dataset(batch):
     with processor.as_target_processor():
         batch["labels"] = processor(batch["sentence"]).input_ids
     return batch
-
-
-def process_common_voice_dataset(lang="tr"):
-    common_voice_train = load_dataset("mozilla-foundation/common_voice_11_0", lang, split="train+validation")
-    common_voice_test = load_dataset("mozilla-foundation/common_voice_11_0", lang, split="test")
-    common_voice_train = common_voice_train.map(remove_special_characters).cast_column("audio", Audio(sampling_rate=16_000))\
-        .map(prepare_dataset, remove_columns=common_voice_train.column_names)
-    common_voice_test = common_voice_test.map(remove_special_characters).cast_column("audio", Audio(sampling_rate=16_000)).map(prepare_dataset, remove_columns=common_voice_train.column_names)
-
-    vocab_train = common_voice_train.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True, remove_columns=common_voice_train.column_names)
-    vocab_test = common_voice_test.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True,
-                                       remove_columns=common_voice_test.column_names)
-    vocab = list(set(vocab_train["vocab"][0]) | set(vocab_test["vocab"][0]))
-    vocab_dict = {v: k for k, v in enumerate(sorted(vocab))}
-    vocab_dict["|"] = vocab_dict[" "]
-    vocab_dict["[UNK]"] = len(vocab_dict)
-    vocab_dict["[PAD]"] = len(vocab_dict)
-    with open('vocab.json', 'w') as vocab_file:
-        json.dump(vocab_dict, vocab_file)
-    return common_voice_train, common_voice_test
-
-
 
 @dataclass
 class DataCollatorCTCWithPadding:
@@ -128,6 +99,7 @@ class DataCollatorCTCWithPadding:
 
 
 def train(output_dir):
+
     data_collator = DataCollatorCTCWithPadding(processor=processor, padding=True)
     model = Wav2Vec2ForCTC.from_pretrained(
         "facebook/wav2vec2-xls-r-300m",
@@ -159,7 +131,6 @@ def train(output_dir):
         push_to_hub=True,
     )
     model.freeze_feature_extractor()
-    common_voice_train, common_voice_test = process_common_voice_dataset()
 
     trainer = Trainer(
         model=model,
@@ -175,3 +146,36 @@ def train(output_dir):
 
     print("training completed")
 
+
+if __name__ == '__main__':
+
+
+    common_voice_train = load_dataset("mozilla-foundation/common_voice_11_0", 'tr', split="train+validation")
+    common_voice_test = load_dataset("mozilla-foundation/common_voice_11_0", 'tr', split="test")
+
+    common_voice_train = common_voice_train.map(remove_special_characters)
+    common_voice_test = common_voice_test.map(remove_special_characters)
+
+    vocab_train = common_voice_train.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True, remove_columns=common_voice_train.column_names)
+    vocab_test = common_voice_test.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True,
+                                           remove_columns=common_voice_test.column_names)
+
+    vocab = list(set(vocab_train["vocab"][0]) | set(vocab_test["vocab"][0]))
+    vocab_dict = {v: k for k, v in enumerate(sorted(vocab))}
+    vocab_dict["|"] = vocab_dict[" "]
+    vocab_dict["[UNK]"] = len(vocab_dict)
+    vocab_dict["[PAD]"] = len(vocab_dict)
+    with open('vocab.json', 'w') as vocab_file:
+        json.dump(vocab_dict, vocab_file)
+
+    feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0,
+                                                 do_normalize=True, return_attention_mask=True)
+    tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(".", unk_token="[UNK]", pad_token="[PAD]",
+                                                         word_delimiter_token="|")
+    processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
+
+    common_voice_train = common_voice_train.cast_column("audio", Audio(sampling_rate=16_000))
+    common_voice_test = common_voice_test.cast_column("audio", Audio(sampling_rate=16_000))
+
+    common_voice_train = common_voice_train.map(prepare_dataset, remove_columns=common_voice_train.column_names)
+    common_voice_test = common_voice_test.map(prepare_dataset, remove_columns=common_voice_test.column_names)
