@@ -1,3 +1,5 @@
+#wav2vec fine tuning based on https://huggingface.co/blog/fine-tune-xlsr-wav2vec2
+
 from datasets import load_dataset, load_metric, Audio
 import torch
 import numpy as np
@@ -6,6 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 import re, json
 from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor, Wav2Vec2Processor, Wav2Vec2ForCTC, \
     TrainingArguments, Trainer
+import argparse
 
 
 
@@ -98,7 +101,7 @@ class DataCollatorCTCWithPadding:
 
 
 
-def train(output_dir):
+def train_wav2vec(output_dir, model_id):
 
     data_collator = DataCollatorCTCWithPadding(processor=processor, padding=True)
     model = Wav2Vec2ForCTC.from_pretrained(
@@ -137,8 +140,8 @@ def train(output_dir):
         data_collator=data_collator,
         args=training_args,
         compute_metrics=compute_metrics,
-        train_dataset=common_voice_train,
-        eval_dataset=common_voice_test,
+        train_dataset=speech_train,
+        eval_dataset=speech_test,
         tokenizer=processor.feature_extractor,
     )
 
@@ -147,22 +150,31 @@ def train(output_dir):
     print("training completed")
 
 
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-m', '--model_id')
+    parser.add_argument('-l','--lang')
+    parser.add_argument('-d','--dataset')
+    parser.add_argument('-o', '--output_dir')
+    args = parser.parse_args()
 
+    speech_train = load_dataset(args.dataset, args.lang, split="train+validation")
+    speech_test = load_dataset(args.dataset, args.lang, split="test")
 
-    common_voice_train = load_dataset("mozilla-foundation/common_voice_11_0", 'tr', split="train+validation")
-    common_voice_test = load_dataset("mozilla-foundation/common_voice_11_0", 'tr', split="test")
+    speech_train = speech_train.map(remove_special_characters)
+    speech_test = speech_test.map(remove_special_characters)
 
-    common_voice_train = common_voice_train.map(remove_special_characters)
-    common_voice_test = common_voice_test.map(remove_special_characters)
-
-    vocab_train = common_voice_train.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True, remove_columns=common_voice_train.column_names)
-    vocab_test = common_voice_test.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True,
-                                           remove_columns=common_voice_test.column_names)
+    vocab_train = speech_train.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True, remove_columns=speech_train.column_names)
+    vocab_test = speech_test.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True,
+                                           remove_columns=speech_test.column_names)
 
     vocab = list(set(vocab_train["vocab"][0]) | set(vocab_test["vocab"][0]))
     vocab_dict = {v: k for k, v in enumerate(sorted(vocab))}
     vocab_dict["|"] = vocab_dict[" "]
+    del vocab_dict["("]
+    del vocab_dict[")"]
+    del vocab_dict[" "]
     vocab_dict["[UNK]"] = len(vocab_dict)
     vocab_dict["[PAD]"] = len(vocab_dict)
     with open('vocab.json', 'w') as vocab_file:
@@ -174,8 +186,10 @@ if __name__ == '__main__':
                                                          word_delimiter_token="|")
     processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
 
-    common_voice_train = common_voice_train.cast_column("audio", Audio(sampling_rate=16_000))
-    common_voice_test = common_voice_test.cast_column("audio", Audio(sampling_rate=16_000))
+    speech_train = speech_train.cast_column("audio", Audio(sampling_rate=16_000))
+    speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
 
-    common_voice_train = common_voice_train.map(prepare_dataset, remove_columns=common_voice_train.column_names)
-    common_voice_test = common_voice_test.map(prepare_dataset, remove_columns=common_voice_test.column_names)
+    assert isinstance(speech_train.column_names, object)
+    speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
+    speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
+    train_wav2vec(args.output_dir, args.model)
