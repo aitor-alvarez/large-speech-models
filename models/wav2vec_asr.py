@@ -55,21 +55,9 @@ def prepare_dataset(batch):
 
 @dataclass
 class DataCollatorCTCWithPadding:
-    """
-    Data collator that will dynamically pad the inputs received.
-    Args:
-        processor (:class:`~transformers.Wav2Vec2Processor`)
-            The processor used for proccessing the data.
-        padding (:obj:`bool`, :obj:`str` or :class:`~transformers.tokenization_utils_base.PaddingStrategy`, `optional`, defaults to :obj:`True`):
-            Select a strategy to pad the returned sequences (according to the model's padding side and padding index)
-            among:
-            * :obj:`True` or :obj:`'longest'`: Pad to the longest sequence in the batch (or no padding if only a single
-              sequence if provided).
-            * :obj:`'max_length'`: Pad to a maximum length specified with the argument :obj:`max_length` or to the
-              maximum acceptable input length for the model if that argument is not provided.
-            * :obj:`False` or :obj:`'do_not_pad'` (default): No padding (i.e., can output a batch with sequences of
-              different lengths).
-    """
+    '''
+    For padding data dynamically
+    '''
 
     processor: Wav2Vec2Processor
     padding: Union[bool, str] = True
@@ -100,12 +88,11 @@ class DataCollatorCTCWithPadding:
         return batch
 
 
-
 def train_wav2vec(output_dir, model_id):
 
     data_collator = DataCollatorCTCWithPadding(processor=processor, padding=True)
     model = Wav2Vec2ForCTC.from_pretrained(
-        "facebook/wav2vec2-xls-r-300m",
+        model_id,
         attention_dropout=0.0,
         hidden_dropout=0.0,
         feat_proj_dropout=0.0,
@@ -131,7 +118,7 @@ def train_wav2vec(output_dir, model_id):
         learning_rate=3e-4,
         warmup_steps=500,
         save_total_limit=2,
-        push_to_hub=True,
+        push_to_hub=False,
     )
     model.freeze_feature_extractor()
 
@@ -172,8 +159,6 @@ if __name__ == '__main__':
     vocab = list(set(vocab_train["vocab"][0]) | set(vocab_test["vocab"][0]))
     vocab_dict = {v: k for k, v in enumerate(sorted(vocab))}
     vocab_dict["|"] = vocab_dict[" "]
-    del vocab_dict["("]
-    del vocab_dict[")"]
     del vocab_dict[" "]
     vocab_dict["[UNK]"] = len(vocab_dict)
     vocab_dict["[PAD]"] = len(vocab_dict)
@@ -189,7 +174,28 @@ if __name__ == '__main__':
     speech_train = speech_train.cast_column("audio", Audio(sampling_rate=16_000))
     speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
 
-    assert isinstance(speech_train.column_names, object)
     speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
     speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
-    train_wav2vec(args.output_dir, args.model)
+    train_wav2vec(args.output_dir, args.model_id)
+
+    #Test model
+
+    processor = Wav2Vec2Processor.from_pretrained(args.output_dir)
+    model = Wav2Vec2ForCTC.from_pretrained(args.output_dir).to("cuda")
+
+
+    def get_logits_result(batch):
+        with torch.no_grad():
+            input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
+            logits = model(input_dict.input_values.to("cuda")).logits
+
+        pred_ids = torch.argmax(logits, dim=-1)
+        batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
+        batch["txt"] = processor.decode(batch["labels"], group_tokens=False)
+        return batch
+
+
+    results = speech_test.map(get_logits_result)
+
+    print("Test WER: {:.3f}".format(wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
+
