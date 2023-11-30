@@ -1,5 +1,4 @@
 #wav2vec fine tuning based on https://huggingface.co/blog/fine-tune-xlsr-wav2vec2
-
 from datasets import load_dataset, load_metric, Audio
 import torch
 import numpy as np
@@ -111,13 +110,13 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 def train_asr(output_dir, model_id):
     if 'whisper' in model_id:
         data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
-        model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
+        model = WhisperForConditionalGeneration.from_pretrained(model_id)
         model.config.forced_decoder_ids = None
         model.config.suppress_tokens = []
         training_args = Seq2SeqTrainingArguments(
-            output_dir=output_dir,  # change to a repo name of your choice
+            output_dir=output_dir,
             per_device_train_batch_size=16,
-            gradient_accumulation_steps=1,  # increase by 2x for every 2x decrease in batch size
+            gradient_accumulation_steps=1,
             learning_rate=1e-5,
             warmup_steps=500,
             max_steps=4000,
@@ -130,7 +129,7 @@ def train_asr(output_dir, model_id):
             save_steps=1000,
             eval_steps=1000,
             logging_steps=25,
-            report_to=["tensorboard"],
+            #report_to=["tensorboard"],
             load_best_model_at_end=True,
             metric_for_best_model="wer",
             greater_is_better=False,
@@ -260,4 +259,3 @@ if __name__ == '__main__':
     results = speech_test.map(get_logits_result)
 
     print("Test WER: {:.3f}".format(wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
-
