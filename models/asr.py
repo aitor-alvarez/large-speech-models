@@ -110,7 +110,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 def train_asr(output_dir, model_id):
     if 'whisper' in model_id:
         data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
-        model = WhisperForConditionalGeneration.from_pretrained(model_id)
+        model = WhisperForConditionalGeneration.from_pretrained(model_id).to(device)
         model.config.forced_decoder_ids = None
         model.config.suppress_tokens = []
         training_args = Seq2SeqTrainingArguments(
@@ -158,7 +158,7 @@ def train_asr(output_dir, model_id):
             ctc_loss_reduction="mean",
             pad_token_id=processor.tokenizer.pad_token_id,
             vocab_size=len(processor.tokenizer),
-        )
+        ).to(device)
 
         training_args = TrainingArguments(
             output_dir=output_dir,
@@ -196,11 +196,15 @@ def train_asr(output_dir, model_id):
 
 
 if __name__ == '__main__':
+    if torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
     parser = argparse.ArgumentParser()
-    parser.add_argument('-m', '--model_id')
-    parser.add_argument('-l','--lang')
-    parser.add_argument('-d','--dataset')
-    parser.add_argument('-o', '--output_dir')
+    parser.add_argument( '--model_id')
+    parser.add_argument('--lang')
+    parser.add_argument('--dataset')
+    parser.add_argument('--output_dir')
     args = parser.parse_args()
 
     speech_train = load_dataset(args.dataset, args.lang, split="train+validation")
@@ -225,13 +229,10 @@ if __name__ == '__main__':
     speech_train = speech_train.cast_column("audio", Audio(sampling_rate=16_000))
     speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
 
-    speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
-    speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
-
     if 'whisper' in args.model_id:
         feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_id)
         tokenizer = WhisperTokenizer.from_pretrained(args.model_id, language=args.lang, task="transcribe")
-        processor = WhisperProcessor.from_pretrained("openai/whisper-small", language="Hindi", task="transcribe")
+        processor = WhisperProcessor.from_pretrained(args.model_id, language=args.lang, task="transcribe")
 
     elif 'wav2vec' in args.model_id:
         feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0,
@@ -242,13 +243,15 @@ if __name__ == '__main__':
         train_asr(args.output_dir, args.model_id)
         # Test model
         processor = Wav2Vec2Processor.from_pretrained(args.output_dir)
-        model = Wav2Vec2ForCTC.from_pretrained(args.output_dir).to("cuda")
+        model = Wav2Vec2ForCTC.from_pretrained(args.output_dir).to(device)
 
+    speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
+    speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
 
     def get_logits_result(batch):
         with torch.no_grad():
             input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
-            logits = model(input_dict.input_values.to("cuda")).logits
+            logits = model(input_dict.input_values.to(device)).logits
 
         pred_ids = torch.argmax(logits, dim=-1)
         batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
