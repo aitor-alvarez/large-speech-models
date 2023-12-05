@@ -163,6 +163,7 @@ def train_asr(output_dir, model_id):
         training_args = TrainingArguments(
             output_dir=output_dir,
             group_by_length=True,
+            remove_unused_columns=False,
             per_device_train_batch_size=16,
             gradient_accumulation_steps=2,
             evaluation_strategy="steps",
@@ -240,13 +241,13 @@ if __name__ == '__main__':
         tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(".", unk_token="[UNK]", pad_token="[PAD]",
                                                              word_delimiter_token="|")
         processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
+        speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
+        speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
         train_asr(args.output_dir, args.model_id)
         # Test model
         processor = Wav2Vec2Processor.from_pretrained(args.output_dir)
         model = Wav2Vec2ForCTC.from_pretrained(args.output_dir).to(device)
 
-    speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
-    speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
 
     def get_logits_result(batch):
         with torch.no_grad():
