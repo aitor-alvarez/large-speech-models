@@ -9,16 +9,20 @@ from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor, Wav2Vec
     TrainingArguments, Trainer, WhisperFeatureExtractor, WhisperTokenizer, WhisperProcessor, WhisperForConditionalGeneration, \
     Seq2SeqTrainingArguments, Seq2SeqTrainer
 import argparse
-
+from utils.arabic_preprocess import process_text
 
 
 wer_metric = load_metric("wer")
 
 
-chars_to_remove_regex = '[\,\?\.\!\-\;\:\"\“\%\‘\”\�\']'
+chars_to_remove_regex = '[\,\؟\.\!\-\;\:\'\"\☭\«\»\؛\—\ـ\_\،\“\%\‘\”\�]'
 
 def remove_special_characters(batch):
     batch["sentence"] = re.sub(chars_to_remove_regex, '', batch["sentence"]).lower()
+    return batch
+
+def remove_ar_special_characters(batch):
+    batch["sentence"] = process_text(batch["sentence"]).lower()
     return batch
 
 def extract_characters(batch):
@@ -206,13 +210,18 @@ if __name__ == '__main__':
     parser.add_argument('--lang')
     parser.add_argument('--dataset')
     parser.add_argument('--output_dir')
+    parser.add_argument('--train_test')
     args = parser.parse_args()
 
     speech_train = load_dataset(args.dataset, args.lang, split="train+validation")
     speech_test = load_dataset(args.dataset, args.lang, split="test")
 
-    speech_train = speech_train.map(remove_special_characters)
-    speech_test = speech_test.map(remove_special_characters)
+    if args.lang =='ar':
+        speech_train = speech_train.map(remove_ar_special_characters)
+        speech_test = speech_test.map(remove_ar_special_characters)
+    else:
+        speech_train = speech_train.map(remove_special_characters)
+        speech_test = speech_test.map(remove_special_characters)
 
     vocab_train = speech_train.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True, remove_columns=speech_train.column_names)
     vocab_test = speech_test.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True,
@@ -230,36 +239,39 @@ if __name__ == '__main__':
     speech_train = speech_train.cast_column("audio", Audio(sampling_rate=16_000))
     speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
 
-    if 'whisper' in args.model_id:
-        feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_id)
-        tokenizer = WhisperTokenizer.from_pretrained(args.model_id, language=args.lang, task="transcribe")
-        processor = WhisperProcessor.from_pretrained(args.model_id, language=args.lang, task="transcribe")
+    if args.train_test == 'train':
+        if 'whisper' in args.model_id:
+            feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_id)
+            tokenizer = WhisperTokenizer.from_pretrained(args.model_id, language=args.lang, task="transcribe")
+            processor = WhisperProcessor.from_pretrained(args.model_id, language=args.lang, task="transcribe")
 
-    elif 'wav2vec' in args.model_id:
-        feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0,
-                                                     do_normalize=True, return_attention_mask=True)
-        tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(".", unk_token="[UNK]", pad_token="[PAD]",
-                                                             word_delimiter_token="|")
-        processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
-        speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
-        speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
-        train_asr(args.output_dir, args.model_id)
-        # Test model
-        processor = Wav2Vec2Processor.from_pretrained(args.output_dir)
-        model = Wav2Vec2ForCTC.from_pretrained(args.output_dir).to(device)
+        elif 'wav2vec' in args.model_id:
+            feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0,
+                                                         do_normalize=True, return_attention_mask=True)
+            tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(".", unk_token="[UNK]", pad_token="[PAD]",
+                                                                 word_delimiter_token="|")
+            processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
+            speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
+            speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
+            train_asr(args.output_dir, args.model_id)
 
-
-    def get_logits_result(batch):
-        with torch.no_grad():
-            input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
-            logits = model(input_dict.input_values.to(device)).logits
-
-        pred_ids = torch.argmax(logits, dim=-1)
-        batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
-        batch["txt"] = processor.decode(batch["labels"], group_tokens=False)
-        return batch
+    elif args.train_test == 'test':
+        if 'wav2vec' in args.model_id:
+            processor = Wav2Vec2Processor.from_pretrained(args.output_dir)
+            model = Wav2Vec2ForCTC.from_pretrained(args.output_dir).to(device)
 
 
-    results = speech_test.map(get_logits_result)
+        def get_logits_result(batch):
+            with torch.no_grad():
+                input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
+                logits = model(input_dict.input_values.to(device)).logits
 
-    print("Test WER: {:.3f}".format(wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
+            pred_ids = torch.argmax(logits, dim=-1)
+            batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
+            batch["txt"] = processor.decode(batch["labels"], group_tokens=False)
+            return batch
+
+
+        results = speech_test.map(get_logits_result)
+
+        print("Test WER: {:.3f}".format(wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
