@@ -9,7 +9,7 @@ from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor, Wav2Vec
     TrainingArguments, Trainer, WhisperFeatureExtractor, WhisperTokenizer, WhisperProcessor, WhisperForConditionalGeneration, \
     Seq2SeqTrainingArguments, Seq2SeqTrainer
 import argparse
-from utils.arabic_preprocess import process_text
+from util.arabic_preprocess import process_text
 
 
 wer_metric = load_metric("wer")

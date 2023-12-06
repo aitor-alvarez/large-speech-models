@@ -2,7 +2,7 @@ from datasets import load_dataset
 import qalsadi.lemmatizer
 from collections import Counter
 import json, re
-from utils.arabic_preprocess import process_text
+from util.arabic_preprocess import process_text
 
 lemmatizer = qalsadi.lemmatizer.Lemmatizer()
 
