@@ -150,7 +150,7 @@ def train_asr(output_dir, model_id):
         )
 
 
-    elif 'wav2vec' in model_id:
+    else:
         data_collator = DataCollatorCTCWithPadding(processor=processor, padding=True)
         model = Wav2Vec2ForCTC.from_pretrained(
             model_id,
@@ -166,17 +166,16 @@ def train_asr(output_dir, model_id):
 
         training_args = TrainingArguments(
             output_dir=output_dir,
-            group_by_length=True,
             remove_unused_columns=False,
-            per_device_train_batch_size=16,
+            per_device_train_batch_size=10,
             gradient_accumulation_steps=2,
             evaluation_strategy="steps",
             num_train_epochs=30,
             gradient_checkpointing=True,
             fp16=True,
             save_steps=400,
-            eval_steps=400,
-            logging_steps=400,
+            eval_steps=100,
+            logging_steps=50,
             learning_rate=3e-4,
             warmup_steps=500,
             save_total_limit=2,
@@ -245,33 +244,34 @@ if __name__ == '__main__':
             tokenizer = WhisperTokenizer.from_pretrained(args.model_id, language=args.lang, task="transcribe")
             processor = WhisperProcessor.from_pretrained(args.model_id, language=args.lang, task="transcribe")
 
-        elif 'wav2vec' in args.model_id:
+        elif 'facebook' in args.model_id:
             feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0,
                                                          do_normalize=True, return_attention_mask=True)
             tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(".", unk_token="[UNK]", pad_token="[PAD]",
                                                                  word_delimiter_token="|")
             processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
-            speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
-            speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
-            train_asr(args.output_dir, args.model_id)
+
+        speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
+        speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
+
+        train_asr(args.output_dir, args.model_id)
 
     elif args.train_test == 'test':
-        if 'wav2vec' in args.model_id:
+        if 'facebook' in args.model_id:
+            print(args.model_id)
             processor = Wav2Vec2Processor.from_pretrained(args.model_id)
             model = Wav2Vec2ForCTC.from_pretrained(args.model_id).to(device)
 
 
-        def get_logits_result(batch):
-            with torch.no_grad():
-                input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
-                logits = model(input_dict.input_values.to(device)).logits
+            def get_logits_result(batch):
+                with torch.no_grad():
+                    input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
+                    logits = model(input_dict.input_values.to(device)).logits
+                    pred_ids = torch.argmax(logits, dim=-1)
+                    batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
+                    batch["txt"] = processor.decode(batch["labels"], group_tokens=False)
+                    return batch
 
-            pred_ids = torch.argmax(logits, dim=-1)
-            batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
-            batch["txt"] = processor.decode(batch["labels"], group_tokens=False)
-            return batch
+            results = speech_test.map(get_logits_result)
 
-
-        results = speech_test.map(get_logits_result)
-
-        print("Test WER: {:.3f}".format(wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
+            print("Test WER: {:.3f}".format(wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
