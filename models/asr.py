@@ -252,7 +252,7 @@ if __name__ == '__main__':
             processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
 
         speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
-        speech_train = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
+        speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
 
         train_asr(args.output_dir, args.model_id)
 
