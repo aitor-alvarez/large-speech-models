@@ -257,8 +257,8 @@ if __name__ == '__main__':
 
     elif args.train_test == 'test':
         if 'wav2vec' in args.model_id:
-            processor = Wav2Vec2Processor.from_pretrained(args.output_dir)
-            model = Wav2Vec2ForCTC.from_pretrained(args.output_dir).to(device)
+            processor = Wav2Vec2Processor.from_pretrained(args.model_id)
+            model = Wav2Vec2ForCTC.from_pretrained(args.model_id).to(device)
 
 
         def get_logits_result(batch):
