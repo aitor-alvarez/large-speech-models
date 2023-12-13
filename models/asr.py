@@ -111,7 +111,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 
         return batch
 
-def train_asr(output_dir, model_id):
+def train_asr(output_dir, model_id, batch_size, num_epochs):
     if 'whisper' in model_id:
         data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
         model = WhisperForConditionalGeneration.from_pretrained(model_id).to(device)
@@ -119,7 +119,7 @@ def train_asr(output_dir, model_id):
         model.config.suppress_tokens = []
         training_args = Seq2SeqTrainingArguments(
             output_dir=output_dir,
-            per_device_train_batch_size=16,
+            per_device_train_batch_size=batch_size,
             gradient_accumulation_steps=1,
             learning_rate=1e-5,
             warmup_steps=500,
@@ -127,12 +127,12 @@ def train_asr(output_dir, model_id):
             gradient_checkpointing=True,
             fp16=True,
             evaluation_strategy="steps",
-            per_device_eval_batch_size=8,
+            per_device_eval_batch_size=batch_size,
             predict_with_generate=True,
             generation_max_length=225,
             save_steps=1000,
             eval_steps=1000,
-            logging_steps=25,
+            logging_steps=50,
             #report_to=["tensorboard"],
             load_best_model_at_end=True,
             metric_for_best_model="wer",
@@ -167,10 +167,10 @@ def train_asr(output_dir, model_id):
         training_args = TrainingArguments(
             output_dir=output_dir,
             remove_unused_columns=False,
-            per_device_train_batch_size=16,
+            per_device_train_batch_size=batch_size,
             gradient_accumulation_steps=2,
             evaluation_strategy="steps",
-            num_train_epochs=30,
+            num_train_epochs=num_epochs,
             gradient_checkpointing=True,
             fp16=True,
             save_steps=400,
@@ -206,6 +206,8 @@ if __name__ == '__main__':
         device = "cpu"
     parser = argparse.ArgumentParser()
     parser.add_argument( '--model_id')
+    parser.add_argument('--num_epochs')
+    parser.add_argument('--batch_size')
     parser.add_argument('--lang')
     parser.add_argument('--dataset')
     parser.add_argument('--output_dir')
@@ -254,7 +256,7 @@ if __name__ == '__main__':
         speech_train = speech_train.map(prepare_dataset, remove_columns=speech_train.column_names)
         speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
 
-        train_asr(args.output_dir, args.model_id)
+        train_asr(args.output_dir, args.model_id, args.batch_size, args.num_epochs)
 
     elif args.train_test == 'test':
         if 'facebook' or 'wav2vec2' in args.model_id:
@@ -271,10 +273,10 @@ if __name__ == '__main__':
             def get_logits_result(batch):
                 with torch.no_grad():
                     input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
-                    logits = model(input_dict.input_values.to(device), attention_mask=input_dict.attention_mask.to("cuda")).logits
+                    logits = model(input_dict.input_values.to(device), attention_mask=input_dict.attention_mask.to(device)).logits
                     pred_ids = torch.argmax(logits, dim=-1)
                     batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
-                    batch["txt"] = processor.decode(batch["labels"], group_tokens=True)
+                    batch["txt"] = processor.decode(batch["labels"])
                     return batch
 
             results = speech_test.map(get_logits_result)

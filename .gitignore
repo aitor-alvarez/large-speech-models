@@ -4,3 +4,4 @@ venv/
 *pyc
 data/
 fine_tuned_models
+vocab.jsons

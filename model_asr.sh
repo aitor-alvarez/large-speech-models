@@ -6,7 +6,9 @@
 #facebook/mms-1b-all
 
 python models/asr.py  \
---model_id='facebook/wav2vec2-large-xlsr-53' \
+--model_id='facebook/wav2vec2-xls-r-300m' \
+--num_epochs=30 \
+--batch_size=16 \
 --lang='ar' \
 --dataset='mozilla-foundation/common_voice_11_0' \
 --output_dir='fine_tuned_models' \
