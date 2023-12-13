@@ -7,7 +7,7 @@
 
 python models/asr.py  \
 --model_id='facebook/wav2vec2-large-xlsr-53' \
---lang='ar'\
---dataset='mozilla-foundation/common_voice_13_0' \
---output_dir='fine_tuned_models'\
+--lang='ar' \
+--dataset='mozilla-foundation/common_voice_11_0' \
+--output_dir='fine_tuned_models' \
 --train_test='test'

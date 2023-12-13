@@ -1,4 +1,6 @@
 venv/
 .idea/
 *.json
+*pyc
 data/
+fine_tuned_models
