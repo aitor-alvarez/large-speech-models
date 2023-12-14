@@ -209,13 +209,19 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs')
     parser.add_argument('--batch_size')
     parser.add_argument('--lang')
+    parser.add_argument('--data_folder')
     parser.add_argument('--dataset')
     parser.add_argument('--output_dir')
     parser.add_argument('--train_test')
     args = parser.parse_args()
 
-    speech_train = load_dataset(args.dataset, args.lang, split="train+validation")
-    speech_test = load_dataset(args.dataset, args.lang, split="test")
+    #For datasets that are not hosted in Huggingface but on local disk
+    if args.data_folder is not None:
+        speech_train = load_dataset("audiofolder", data_dir=args.data_folder, split="train")
+        speech_test = load_dataset("audiofolder", data_dir=args.data_folder, split="test")
+    else:
+        speech_train = load_dataset(args.dataset, args.lang, split="train+validation")
+        speech_test = load_dataset(args.dataset, args.lang, split="test")
 
     if args.lang =='ar':
         speech_train = speech_train.map(remove_ar_special_characters)

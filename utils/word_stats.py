@@ -8,7 +8,7 @@ lemmatizer = qalsadi.lemmatizer.Lemmatizer()
 
 
 
-dataset = load_dataset('mozilla-foundation/common_voice_13_0','ar', split='train')
+dataset = load_dataset('mozilla-foundation/common_voice_11_0','ar', split='train')
 sentences = [process_text(d['sentence']) for d in dataset]
 lemmas=[]
 for s in sentences:
