@@ -1,7 +1,7 @@
 venv/
 .idea/
 *.json
-*pyc
+*.pyc
 data/
 fine_tuned_models
 vocab.jsons
