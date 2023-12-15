@@ -273,18 +273,24 @@ if __name__ == '__main__':
             processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
             model = Wav2Vec2ForCTC.from_pretrained(args.model_id).to(device)
 
-            speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
+        else:
+            feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_id)
+            tokenizer = WhisperTokenizer.from_pretrained(args.model_id, language=args.lang, task="transcribe")
+            processor = WhisperProcessor.from_pretrained(args.model_id, language=args.lang, task="transcribe")
+
+        speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
+
+        def get_logits_result(batch):
+            with torch.no_grad():
+                input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
+                logits = model(input_dict.input_values.to(device),
+                               attention_mask=input_dict.attention_mask.to(device)).logits
+                pred_ids = torch.argmax(logits, dim=-1)
+                batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
+                batch["txt"] = processor.decode(batch["labels"])
+                return batch
 
 
-            def get_logits_result(batch):
-                with torch.no_grad():
-                    input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
-                    logits = model(input_dict.input_values.to(device), attention_mask=input_dict.attention_mask.to(device)).logits
-                    pred_ids = torch.argmax(logits, dim=-1)
-                    batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
-                    batch["txt"] = processor.decode(batch["labels"])
-                    return batch
+        results = speech_test.map(get_logits_result)
 
-            results = speech_test.map(get_logits_result)
-
-            print("Test WER: {:.2f}".format(wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
+        print("Test WER: {:.2f}".format(wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
