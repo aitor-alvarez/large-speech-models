@@ -4,6 +4,9 @@
 #facebook/Wav2Vec2-XLS-R-1B
 #facebook/Wav2Vec2-XLS-R-2B
 #facebook/mms-1b-all
+#openai/whisper-small
+#openai/whisper-medium
+#openai/whisper-large
 
 python models/asr.py  \
 --model_id='facebook/wav2vec2-xls-r-300m' \

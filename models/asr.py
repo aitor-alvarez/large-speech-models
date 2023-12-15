@@ -57,6 +57,7 @@ def prepare_dataset(batch):
         batch["labels"] = processor(batch["sentence"]).input_ids
     return batch
 
+
 @dataclass
 class DataCollatorCTCWithPadding:
     '''
@@ -214,42 +215,42 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir')
     parser.add_argument('--train_test')
     args = parser.parse_args()
-
-    #For datasets that are not hosted in Huggingface but on local disk
-    if args.data_folder is not None:
-        speech_train = load_dataset("audiofolder", data_dir=args.data_folder, split="train")
-        speech_test = load_dataset("audiofolder", data_dir=args.data_folder, split="test")
-    else:
-        speech_train = load_dataset(args.dataset, args.lang, split="train+validation")
-        speech_test = load_dataset(args.dataset, args.lang, split="test")
-
-    if args.lang =='ar':
-        speech_train = speech_train.map(remove_ar_special_characters)
-        speech_test = speech_test.map(remove_ar_special_characters)
-    else:
-        speech_train = speech_train.map(remove_special_characters)
-        speech_test = speech_test.map(remove_special_characters)
-
-    vocab_train = speech_train.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True, remove_columns=speech_train.column_names)
-    vocab_test = speech_test.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True,
-                                           remove_columns=speech_test.column_names)
-
-    vocab = list(set(vocab_train["vocab"][0]) | set(vocab_test["vocab"][0]))
-    vocab_dict = {v: k for k, v in enumerate(sorted(vocab))}
-    vocab_dict["|"] = vocab_dict[" "]
-    del vocab_dict[" "]
-    vocab_dict["[UNK]"] = len(vocab_dict)
-    vocab_dict["[PAD]"] = len(vocab_dict)
-    with open('vocab.json', 'w') as vocab_file:
-        json.dump(vocab_dict, vocab_file)
-
-    speech_train = speech_train.cast_column("audio", Audio(sampling_rate=16_000))
-    speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
-
     if args.train_test == 'train':
+
+        #For datasets that are not hosted in Huggingface but on local disk
+        if args.data_folder is not None:
+            speech_train = load_dataset("audiofolder", data_dir=args.data_folder, split="train")
+            speech_test = load_dataset("audiofolder", data_dir=args.data_folder, split="test")
+        else:
+            speech_train = load_dataset(args.dataset, args.lang, split="train+validation")
+            speech_test = load_dataset(args.dataset, args.lang, split="test")
+
+        if args.lang =='ar':
+            speech_train = speech_train.map(remove_ar_special_characters)
+            speech_test = speech_test.map(remove_ar_special_characters)
+        else:
+            speech_train = speech_train.map(remove_special_characters)
+            speech_test = speech_test.map(remove_special_characters)
+
+        vocab_train = speech_train.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True, remove_columns=speech_train.column_names)
+        vocab_test = speech_test.map(extract_characters, batched=True, batch_size=-1, keep_in_memory=True,
+                                               remove_columns=speech_test.column_names)
+
+        vocab = list(set(vocab_train["vocab"][0]) | set(vocab_test["vocab"][0]))
+        vocab_dict = {v: k for k, v in enumerate(sorted(vocab))}
+        vocab_dict["|"] = vocab_dict[" "]
+        del vocab_dict[" "]
+        vocab_dict["[UNK]"] = len(vocab_dict)
+        vocab_dict["[PAD]"] = len(vocab_dict)
+        with open('vocab.json', 'w') as vocab_file:
+            json.dump(vocab_dict, vocab_file)
+
+        speech_train = speech_train.cast_column("audio", Audio(sampling_rate=16_000))
+        speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
+
+
         if 'whisper' in args.model_id:
             feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_id)
-            tokenizer = WhisperTokenizer.from_pretrained(args.model_id, language=args.lang, task="transcribe")
             processor = WhisperProcessor.from_pretrained(args.model_id, language=args.lang, task="transcribe")
 
         elif 'facebook' or 'wav2vec2' in args.model_id:
@@ -265,7 +266,8 @@ if __name__ == '__main__':
         train_asr(args.output_dir, args.model_id, args.batch_size, args.num_epochs)
 
     elif args.train_test == 'test':
-        if 'facebook' or 'wav2vec2' in args.model_id:
+
+        if 'facebook' in args.model_id:
             feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0,
                                                          do_normalize=True, return_attention_mask=True)
             tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(args.model_id, unk_token="[UNK]", pad_token="[PAD]",
@@ -273,24 +275,48 @@ if __name__ == '__main__':
             processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
             model = Wav2Vec2ForCTC.from_pretrained(args.model_id).to(device)
 
-        else:
-            feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_id)
-            tokenizer = WhisperTokenizer.from_pretrained(args.model_id, language=args.lang, task="transcribe")
-            processor = WhisperProcessor.from_pretrained(args.model_id, language=args.lang, task="transcribe")
+            speech_test = load_dataset(args.dataset, args.lang, split="test")
+            speech_test = speech_test.map(remove_ar_special_characters)
+            speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
+            speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
 
-        speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
+            def get_results(batch):
+                with torch.no_grad():
+                    input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
+                    logits = model(input_dict.input_values.to(device),
+                                   attention_mask=input_dict.attention_mask.to(device)).logits
+                    pred_ids = torch.argmax(logits, dim=-1)
+                    batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
+                    batch["txt"] = processor.decode(batch["labels"])
+                    return batch
 
-        def get_logits_result(batch):
-            with torch.no_grad():
-                input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
-                logits = model(input_dict.input_values.to(device),
-                               attention_mask=input_dict.attention_mask.to(device)).logits
-                pred_ids = torch.argmax(logits, dim=-1)
-                batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
-                batch["txt"] = processor.decode(batch["labels"])
+
+            results = speech_test.map(get_results)
+
+            print("Test WER: {:.2f}".format(
+                100 * wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
+
+        elif "openai" in args.model_id:
+            processor = WhisperProcessor.from_pretrained(args.model_id)
+            model = WhisperForConditionalGeneration.from_pretrained(args.model_id).to(device)
+            forced_decoder_ids = processor.get_decoder_prompt_ids(language=args.lang, task="transcribe")
+
+            speech_test = load_dataset(args.dataset, args.lang, split="test")
+            speech_test = speech_test.map(remove_ar_special_characters)
+            speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
+
+            def map_to_pred(batch):
+                audio = batch["audio"]
+                input_features = processor(audio["array"], sampling_rate=audio["sampling_rate"],
+                                           return_tensors="pt").input_features
+                batch["reference"] = processor.tokenizer._normalize(batch['sentence'])
+
+                with torch.no_grad():
+                    predicted_ids = model.generate(input_features.to(device), forced_decoder_ids=forced_decoder_ids)[0]
+                transcription = processor.decode(predicted_ids)
+                batch["prediction"] = processor.tokenizer._normalize(transcription)
                 return batch
 
-
-        results = speech_test.map(get_logits_result)
-
-        print("Test WER: {:.2f}".format(wer_metric.compute(predictions=results["pred_txt"], references=results["txt"])))
+            result = speech_test.map(map_to_pred)
+            print("Test WER: {:.2f}".format(
+                100 * wer_metric.compute(references=result["reference"], predictions=result["prediction"])))
