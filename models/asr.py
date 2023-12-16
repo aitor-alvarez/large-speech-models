@@ -2,8 +2,8 @@
 from datasets import load_dataset, load_metric, Audio
 import torch
 import numpy as np
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass
+from typing import Any, Dict, List, Union
 import re, json
 from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor, Wav2Vec2Processor, Wav2Vec2ForCTC, \
     TrainingArguments, Trainer, WhisperFeatureExtractor, WhisperTokenizer, WhisperProcessor, WhisperForConditionalGeneration, \
@@ -22,7 +22,8 @@ def remove_special_characters(batch):
     return batch
 
 def remove_ar_special_characters(batch):
-    batch["sentence"] = process_text(batch["sentence"]).lower()
+    #Change batch["text"] to batch ["sentence"] if using Common Voice dataset
+    batch["sentence"] = process_text(batch["text"]).lower()
     return batch
 
 def extract_characters(batch):
@@ -267,18 +268,22 @@ if __name__ == '__main__':
 
     elif args.train_test == 'test':
 
-        if 'facebook' in args.model_id:
+        if 'facebook' or 'wav2vec' or 'mms-1b-all' in args.model_id:
             feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0,
                                                          do_normalize=True, return_attention_mask=True)
             tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(args.model_id, unk_token="[UNK]", pad_token="[PAD]",
                                                              word_delimiter_token="|")
             processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
             model = Wav2Vec2ForCTC.from_pretrained(args.model_id).to(device)
-
-            speech_test = load_dataset(args.dataset, args.lang, split="test")
-            speech_test = speech_test.map(remove_ar_special_characters)
-            speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
-            speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
+            if args.data_folder is not None:
+                speech_test = load_dataset("audiofolder", data_dir=args.data_folder, split="test")
+                speech_test = speech_test.map(remove_ar_special_characters)
+                speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
+            else:
+                speech_test = load_dataset(args.dataset, args.lang, split="test")
+                speech_test = speech_test.map(remove_ar_special_characters)
+                speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
+                speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
 
             def get_results(batch):
                 with torch.no_grad():
@@ -300,10 +305,11 @@ if __name__ == '__main__':
             processor = WhisperProcessor.from_pretrained(args.model_id)
             model = WhisperForConditionalGeneration.from_pretrained(args.model_id).to(device)
             forced_decoder_ids = processor.get_decoder_prompt_ids(language=args.lang, task="transcribe")
-
-            speech_test = load_dataset(args.dataset, args.lang, split="test")
-            speech_test = speech_test.map(remove_ar_special_characters)
-            speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
+            if args.data_folder is not None:
+                speech_test = load_dataset("audiofolder", data_dir=args.data_folder, split="test")
+            else:
+                speech_test = load_dataset(args.dataset, args.lang, split="test")
+                speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
 
             def map_to_pred(batch):
                 audio = batch["audio"]

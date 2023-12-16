@@ -19,8 +19,10 @@ def process_text(text):
 	text = text.translate(translator)
 	text = re.sub("[0123456789]", '', text)
 
+	#Do not use for Whisper. If using Whisper, comment from here
 	# remove Tashkeel
 	text = re.sub(arabic_diacritics, '', text)
+	# Until here
 
 	# remove elongation
 	text = re.sub("[إأآا]", "ا", text)
@@ -29,6 +31,7 @@ def process_text(text):
 	text = re.sub("ئ", "ء", text)
 	text = re.sub("ة", "ه", text)
 	text = re.sub("گ", "ك", text)
+
 
 	text = ' '.join(word for word in text.split())
 
