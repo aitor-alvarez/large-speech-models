@@ -92,7 +92,6 @@ class DataCollatorCTCWithPadding:
         return batch
 
 
-
 class DataCollatorSpeechSeq2SeqWithPadding:
     processor: Any
 
@@ -216,8 +215,8 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir')
     parser.add_argument('--train_test')
     args = parser.parse_args()
-    if args.train_test == 'train':
 
+    if args.train_test == 'train':
         #For datasets that are not hosted in Huggingface but on local disk
         if args.data_folder is not None:
             speech_train = load_dataset("audiofolder", data_dir=args.data_folder, split="train")
@@ -294,7 +293,6 @@ if __name__ == '__main__':
                     batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
                     batch["txt"] = processor.decode(batch["labels"])
                     return batch
-
 
             results = speech_test.map(get_results)
 
