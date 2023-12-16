@@ -268,7 +268,7 @@ if __name__ == '__main__':
 
     elif args.train_test == 'test':
 
-        if 'facebook' or 'wav2vec' or 'mms-1b-all' in args.model_id:
+        if not 'openai' in args.model_id:
             feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0,
                                                          do_normalize=True, return_attention_mask=True)
             tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(args.model_id, unk_token="[UNK]", pad_token="[PAD]",
