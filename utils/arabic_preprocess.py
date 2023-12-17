@@ -18,6 +18,7 @@ def process_text(text):
 	translator = str.maketrans('', '', punctuation)
 	text = text.translate(translator)
 	text = re.sub("[0123456789]", '', text)
+	text = re.sub("[A-Za-z]", '', text)
 
 	#Do not use for Whisper. If using Whisper, comment from here
 	# remove Tashkeel

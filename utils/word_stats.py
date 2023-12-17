@@ -1,8 +1,8 @@
 from datasets import load_dataset
 import qalsadi.lemmatizer
 from collections import Counter
-import json, re
-from models.arabic_preprocess import process_text
+import json
+from utils.arabic_preprocess import process_text
 
 lemmatizer = qalsadi.lemmatizer.Lemmatizer()
 

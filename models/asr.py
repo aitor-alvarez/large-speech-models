@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 import re, json
 from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor, Wav2Vec2Processor, Wav2Vec2ForCTC, \
-    TrainingArguments, Trainer, WhisperFeatureExtractor, WhisperTokenizer, WhisperProcessor, WhisperForConditionalGeneration, \
+    TrainingArguments, Trainer, WhisperFeatureExtractor, WhisperProcessor, WhisperForConditionalGeneration, \
     Seq2SeqTrainingArguments, Seq2SeqTrainer
 import argparse
-from arabic_preprocess import process_text
+from utils.arabic_preprocess import process_text
 
 
 wer_metric = load_metric("wer")
@@ -313,7 +313,7 @@ if __name__ == '__main__':
                 audio = batch["audio"]
                 input_features = processor(audio["array"], sampling_rate=audio["sampling_rate"],
                                            return_tensors="pt").input_features
-                batch["reference"] = processor.tokenizer._normalize(batch['sentence'])
+                batch["reference"] = processor.tokenizer._normalize(batch['text'])
 
                 with torch.no_grad():
                     predicted_ids = model.generate(input_features.to(device), forced_decoder_ids=forced_decoder_ids)[0]
