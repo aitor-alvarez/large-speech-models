@@ -9,7 +9,7 @@ from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor, Wav2Vec
     TrainingArguments, Trainer, WhisperFeatureExtractor, WhisperProcessor, WhisperForConditionalGeneration, \
     Seq2SeqTrainingArguments, Seq2SeqTrainer
 import argparse
-from utils.arabic_preprocess import process_text
+from arabic_preprocess import process_text
 
 
 wer_metric = load_metric("wer")
@@ -22,8 +22,8 @@ def remove_special_characters(batch):
     return batch
 
 def remove_ar_special_characters(batch):
-    #Change batch["text"] to batch ["sentence"] if using Common Voice dataset
-    batch["sentence"] = process_text(batch["text"]).lower()
+    #Change batch["text"] to batch ["sentence"] if using Common Voice dataset or to batch["transcription"] if using FLEURS
+    batch["sentence"] = process_text(batch["transcription"]).lower()
     return batch
 
 def extract_characters(batch):
@@ -210,6 +210,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs')
     parser.add_argument('--batch_size')
     parser.add_argument('--lang')
+    parser.add_argument('--data_lang')
     parser.add_argument('--data_folder')
     parser.add_argument('--dataset')
     parser.add_argument('--output_dir')
@@ -222,10 +223,10 @@ if __name__ == '__main__':
             speech_train = load_dataset("audiofolder", data_dir=args.data_folder, split="train")
             speech_test = load_dataset("audiofolder", data_dir=args.data_folder, split="test")
         else:
-            speech_train = load_dataset(args.dataset, args.lang, split="train+validation")
-            speech_test = load_dataset(args.dataset, args.lang, split="test")
+            speech_train = load_dataset(args.dataset, args.data_lang, split="train+validation")
+            speech_test = load_dataset(args.dataset, args.data_lang, split="test")
 
-        if args.lang =='ar':
+        if args.data_lang =='ar':
             speech_train = speech_train.map(remove_ar_special_characters)
             speech_test = speech_test.map(remove_ar_special_characters)
         else:
@@ -279,7 +280,7 @@ if __name__ == '__main__':
                 speech_test = speech_test.map(remove_ar_special_characters)
                 speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
             else:
-                speech_test = load_dataset(args.dataset, args.lang, split="test")
+                speech_test = load_dataset(args.dataset, args.data_lang, split="test")
                 speech_test = speech_test.map(remove_ar_special_characters)
                 speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
                 speech_test = speech_test.map(prepare_dataset, remove_columns=speech_test.column_names)
@@ -306,14 +307,15 @@ if __name__ == '__main__':
             if args.data_folder is not None:
                 speech_test = load_dataset("audiofolder", data_dir=args.data_folder, split="test")
             else:
-                speech_test = load_dataset(args.dataset, args.lang, split="test")
+                speech_test = load_dataset(args.dataset, args.data_lang, split="test")
                 speech_test = speech_test.cast_column("audio", Audio(sampling_rate=16_000))
 
             def map_to_pred(batch):
                 audio = batch["audio"]
                 input_features = processor(audio["array"], sampling_rate=audio["sampling_rate"],
                                            return_tensors="pt").input_features
-                batch["reference"] = processor.tokenizer._normalize(batch['text'])
+                #Change batch['transcription'] to batch['text'] if not using FLEURS
+                batch["reference"] = processor.tokenizer._normalize(batch['sentence'])
 
                 with torch.no_grad():
                     predicted_ids = model.generate(input_features.to(device), forced_decoder_ids=forced_decoder_ids)[0]
