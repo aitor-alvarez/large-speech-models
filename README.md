@@ -25,7 +25,7 @@ python models/asr.py  \
 --dataset='mozilla-foundation/common_voice_11_0' \
 --output_dir='fine_tuned_models' \
 --train_test='train'
-'''
+
 
 Parameters:
 -model_id: string use either a huggingface pretrained model (like above) or a local directory with the pre-trained model.
@@ -40,7 +40,7 @@ If using a custom dataset you can use the following parameter instead of "datase
 -data_folder: string provide the path to your local dataset following the format of transformers dataset library (https://huggingface.co/docs/datasets/create_dataset)
 
 If using data_folder you will need to use data_lang with language code.
-'''
+```
 
 This code was done with the idea of fine-tuning Wav2vec and Whisper for Arabic.
 
