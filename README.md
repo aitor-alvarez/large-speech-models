@@ -38,3 +38,10 @@ Parameters:
 
 If using a custom dataset you can use the following parameter instead of "dataset":
 -data_folder: string provide the path to your local dataset following the format of transformers dataset library (https://huggingface.co/docs/datasets/create_dataset)
+
+If using data_folder you will need to use data_lang with language code.
+'''
+
+This code was done with the idea of fine-tuning Wav2vec and Whisper for Arabic.
+
+Some pre-trained models can be found here: https://huggingface.co/aitor-alvarez/wav2vec2-xls-r-300m-ar 
