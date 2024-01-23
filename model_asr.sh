@@ -1,4 +1,4 @@
-#Large multilingual wav2vec models
+#Large multilingual wav2vec and Whisper models
 #facebook/wav2vec2-large-xlsr-53
 #facebook/wav2vec2-xls-r-300m
 #facebook/Wav2Vec2-XLS-R-1B
