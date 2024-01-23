@@ -1,4 +1,3 @@
-#wav2vec fine tuning based on https://huggingface.co/blog/fine-tune-xlsr-wav2vec2
 from datasets import load_dataset, load_metric, Audio
 import torch
 import numpy as np
