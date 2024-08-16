@@ -114,7 +114,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 def train_asr(output_dir, model_id, batch_size, num_epochs):
     if 'whisper' in model_id:
         data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
-        model = WhisperForConditionalGeneration.from_pretrained(model_id).to(device)
+        model = WhisperForConditionalGeneration.from_pretrained(model_id)
         model.config.forced_decoder_ids = None
         model.config.suppress_tokens = []
         training_args = Seq2SeqTrainingArguments(
@@ -162,7 +162,7 @@ def train_asr(output_dir, model_id, batch_size, num_epochs):
             ctc_loss_reduction="mean",
             pad_token_id=processor.tokenizer.pad_token_id,
             vocab_size=len(processor.tokenizer),
-        ).to(device)
+        )
 
         training_args = TrainingArguments(
             output_dir=output_dir,
@@ -214,6 +214,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset')
     parser.add_argument('--output_dir')
     parser.add_argument('--train_test')
+    parser.add_argument('--num_gpus')
     args = parser.parse_args()
 
     if args.train_test == 'train':
@@ -273,7 +274,7 @@ if __name__ == '__main__':
             tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(args.model_id, unk_token="[UNK]", pad_token="[PAD]",
                                                              word_delimiter_token="|")
             processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
-            model = Wav2Vec2ForCTC.from_pretrained(args.model_id).to(device)
+            model = Wav2Vec2ForCTC.from_pretrained(args.model_id)
             if args.data_folder is not None:
                 speech_test = load_dataset("audiofolder", data_dir=args.data_folder, split="test")
                 speech_test = speech_test.map(remove_ar_special_characters)
@@ -287,8 +288,8 @@ if __name__ == '__main__':
             def get_results(batch):
                 with torch.no_grad():
                     input_dict = processor(batch["input_values"], return_tensors="pt", padding=True)
-                    logits = model(input_dict.input_values.to(device),
-                                   attention_mask=input_dict.attention_mask.to(device)).logits
+                    logits = model(input_dict.input_values,
+                                   attention_mask=input_dict.attention_mask).logits
                     pred_ids = torch.argmax(logits, dim=-1)
                     batch["pred_txt"] = processor.batch_decode(pred_ids)[0]
                     batch["txt"] = processor.decode(batch["labels"])
@@ -301,7 +302,7 @@ if __name__ == '__main__':
 
         elif "openai" in args.model_id:
             processor = WhisperProcessor.from_pretrained(args.model_id)
-            model = WhisperForConditionalGeneration.from_pretrained(args.model_id).to(device)
+            model = WhisperForConditionalGeneration.from_pretrained(args.model_id)
             forced_decoder_ids = processor.get_decoder_prompt_ids(language=args.lang, task="transcribe")
             if args.data_folder is not None:
                 speech_test = load_dataset("audiofolder", data_dir=args.data_folder, split="test")
@@ -317,7 +318,7 @@ if __name__ == '__main__':
                 batch["reference"] = processor.tokenizer._normalize(batch['sentence'])
 
                 with torch.no_grad():
-                    predicted_ids = model.generate(input_features.to(device), forced_decoder_ids=forced_decoder_ids)[0]
+                    predicted_ids = model.generate(input_features, forced_decoder_ids=forced_decoder_ids)[0]
                 transcription = processor.decode(predicted_ids)
                 batch["prediction"] = processor.tokenizer._normalize(transcription)
                 return batch
