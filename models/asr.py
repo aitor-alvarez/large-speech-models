@@ -200,10 +200,6 @@ def train_asr(output_dir, model_id, batch_size, num_epochs):
 
 
 if __name__ == '__main__':
-    if torch.cuda.is_available():
-        device = "cuda"
-    else:
-        device = "cpu"
     parser = argparse.ArgumentParser()
     parser.add_argument( '--model_id')
     parser.add_argument('--num_epochs')
